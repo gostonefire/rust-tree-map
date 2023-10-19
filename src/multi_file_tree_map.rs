@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use crate::{Iter, NodeData, NodeId, OpenMode};
@@ -56,7 +56,12 @@ impl<F> MultiFileTreeMap<F>
             open_mode: open_mode.clone(),
         };
 
-        load_master_data(&mut tree.guarded.lock().unwrap(), open_mode)?;
+        {
+            let mut lock = tree.guarded.lock().unwrap();
+            load_master_data(&mut lock, open_mode)?;
+            save_master_data(&mut lock)?;
+        }
+
 
         Ok(tree)
     }
@@ -369,6 +374,11 @@ fn save_master_data(lock: &mut MutexGuard<MasterData>) -> Result<(), String> {
     lock.score.to_le_bytes().iter().for_each(|v| buf.push(*v));
 
     lock.trees.keys().for_each(|v| buf.push(*v));
+
+    lock.master_file.seek(SeekFrom::Start(0)).unwrap();
+    if let Err(e) = lock.master_file.write_all(&buf) {
+        return Err(String::from(format!("Error while writing to master file: {}", e)));
+    }
 
     Ok(())
 }
