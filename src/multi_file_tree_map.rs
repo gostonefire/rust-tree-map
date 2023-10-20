@@ -77,33 +77,20 @@ impl<F> MultiFileTreeMap<F>
     }
 
     pub fn get_node(&mut self, node: NodeId) -> Result<NodeData, String> {
-        if node == self.get_top() {
-            return Ok(self.get_top_node_data());
-        }
-        let tree_selector = self.get_selector(node, None)?;
         let mut lock = self.guarded.lock().unwrap();
+
+        if node == self.get_top() {
+            return Ok(self.get_top_node_data(&mut lock));
+        }
+
+        let tree_selector = self.get_selector(node, None)?;
 
         manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
             t.get_node(node_from_selector_node(node))
-                .map(|mut n| {
-                    n.node_id = selector_node_from_node(n.node_id, tree_selector);
-                    n
-                })
+        }).map(|mut n| {
+            n.node_id = selector_node_from_node(n.node_id, tree_selector);
+            n
         })
-        // loop {
-        //     match lock.trees.get(&tree_selector) {
-        //         Some(tree) => {
-        //             return tree.get_node(node_from_selector_node(node))
-        //                 .map(|mut n| {
-        //                     n.node_id = selector_node_from_node(n.node_id, tree_selector);
-        //                     n
-        //                 });
-        //         },
-        //         None => {
-        //             add_tree(&mut lock, tree_selector, MustExist)?;
-        //         }
-        //     }
-        // }
     }
 
     pub fn add_child(&mut self, node: NodeId, key: u16, hits: u64, score: u64, max_children: u32) -> Result<NodeId, String> {
@@ -112,20 +99,7 @@ impl<F> MultiFileTreeMap<F>
 
         manage_trees_and_execute(&mut lock, tree_selector, self.open_mode.clone(), |t| {
             t.add_child(node_from_selector_node(node), key, hits, score, max_children)
-                .map(|n| selector_node_from_node(n, tree_selector))
-        })
-
-        // loop {
-        //     match lock.trees.get_mut(&tree_selector) {
-        //         Some(tree) => {
-        //             return tree.add_child(node_from_selector_node(node), key, hits, score, max_children)
-        //                 .map(|n| selector_node_from_node(n, tree_selector));
-        //         },
-        //         None => {
-        //             add_tree(&mut lock, tree_selector, self.open_mode.clone())?;
-        //         }
-        //     }
-        // }
+        }).map(|n| selector_node_from_node(n, tree_selector))
     }
 
     pub fn get_child(&mut self, node: NodeId, key: u16) -> Result<Option<NodeData>, String> {
@@ -134,36 +108,12 @@ impl<F> MultiFileTreeMap<F>
 
         manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
             t.get_child(node_from_selector_node(node), key)
-                .map(|n| {
-                    match n {
-                        Some(mut nd) => {
-                            nd.node_id = selector_node_from_node(nd.node_id, tree_selector);
-                            Some(nd)
-                        },
-                        None => None,
-                    }
-                })
+        }).map(|n| {
+            n.map(|mut nd| {
+                nd.node_id = selector_node_from_node(nd.node_id, tree_selector);
+                nd
+            })
         })
-
-        // loop {
-        //     match lock.trees.get(&tree_selector) {
-        //         Some(tree) => {
-        //             return tree.get_child(node_from_selector_node(node), key)
-        //                 .map(|n| {
-        //                     match n {
-        //                         Some(mut nd) => {
-        //                             nd.node_id = selector_node_from_node(nd.node_id, tree_selector);
-        //                             Some(nd)
-        //                         },
-        //                         None => None,
-        //                     }
-        //                 });
-        //         },
-        //         None => {
-        //             add_tree(&mut lock, tree_selector, MustExist)?;
-        //         }
-        //     }
-        // }
     }
 
     pub fn get_parent(&mut self, node: NodeId) -> Result<Option<NodeData>, String> {
@@ -176,36 +126,16 @@ impl<F> MultiFileTreeMap<F>
 
         manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
             t.get_parent(node_from_selector_node(node))
-                .map(|n| {
-                    match n {
-                        Some(mut nd) => {
-                            nd.node_id = selector_node_from_node(nd.node_id, tree_selector);
-                            Some(nd)
-                        },
-                        None => None,
-                    }
-                })
+        }).map(|n| {
+            n.map(|mut nd| {
+                if nd.node_id == self.get_top() {
+                    self.get_top_node_data(&mut lock)
+                } else {
+                    nd.node_id = selector_node_from_node(nd.node_id, tree_selector);
+                    nd
+                }
+            })
         })
-
-        // loop {
-        //     match lock.trees.get(&tree_selector) {
-        //         Some(tree) => {
-        //             return tree.get_parent(node_from_selector_node(node))
-        //                 .map(|n| {
-        //                     match n {
-        //                         Some(mut nd) => {
-        //                             nd.node_id = selector_node_from_node(nd.node_id, tree_selector);
-        //                             Some(nd)
-        //                         },
-        //                         None => None,
-        //                     }
-        //                 });
-        //         },
-        //         None => {
-        //             add_tree(&mut lock, tree_selector, MustExist)?;
-        //         }
-        //     }
-        // }
     }
 
     pub fn update_node_add(&mut self, node: NodeId, hits: i64, score: i64) -> Result<(), String> {
@@ -222,17 +152,6 @@ impl<F> MultiFileTreeMap<F>
         manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
             t.update_node_add(node_from_selector_node(node), hits, score)
         })
-
-        // loop {
-        //     match lock.trees.get(&tree_selector) {
-        //         Some(tree) => {
-        //             return tree.update_node_add(node_from_selector_node(node), hits, score);
-        //         },
-        //         None => {
-        //             add_tree(&mut lock, tree_selector, MustExist)?;
-        //         }
-        //     }
-        // }
     }
 
     pub fn get_child_iter(&mut self, node: NodeId) -> Iter {
@@ -246,7 +165,9 @@ impl<F> MultiFileTreeMap<F>
             lock.trees.values()
                 .for_each(|t| {
                 t.get_child_iter(t.get_top()).for_each(|t| {
-                    iter.key_vals.push(t);
+                    let tree_selector = self.get_selector(node, Some(t.0)).unwrap();
+                    let node = selector_node_from_node(t.1, tree_selector);
+                    iter.key_vals.push((t.0, node));
                 })
             });
 
@@ -258,18 +179,6 @@ impl<F> MultiFileTreeMap<F>
         manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
             Ok(t.get_child_iter(node_from_selector_node(node)))
         }).expect("non existing tree files for the child iterator")
-
-        // loop {
-        //     match lock.trees.get(&tree_selector) {
-        //         Some(tree) => {
-        //             return tree.get_child_iter(node_from_selector_node(node));
-        //         },
-        //         None => {
-        //             add_tree(&mut lock, tree_selector, MustExist)
-        //                 .expect("non existing tree files for the child iterator");
-        //         }
-        //     }
-        // }
     }
 
     fn get_selector(&self, node: NodeId, key: Option<u16>) -> Result<u8, String> {
@@ -289,9 +198,7 @@ impl<F> MultiFileTreeMap<F>
         }
     }
 
-    fn get_top_node_data(&self) -> NodeData {
-        let lock = self.guarded.lock().unwrap();
-
+    fn get_top_node_data(&self, lock: &mut MutexGuard<MasterData>) -> NodeData {
         NodeData {
             node_id: self.get_top(),
             node_pos: 0,
@@ -326,7 +233,7 @@ fn add_tree(lock: &mut MutexGuard<MasterData>, tree_selector: u8, open_mode: Ope
         return Err(String::from("Error, trying to add more children than allowed for parent"));
     }
 
-    let tree = TreeMap::new(&lock.path, 0, open_mode, Some(tree_selector))?;
+    let tree = TreeMap::new(&lock.path, lock.max_top_children, open_mode, Some(tree_selector))?;
     let _ = &lock.trees.insert(tree_selector, tree);
 
     save_master_data(lock)

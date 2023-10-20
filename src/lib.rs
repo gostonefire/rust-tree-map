@@ -11,8 +11,8 @@ pub struct NodeData {
     pub hits: u64,
     pub score: u64,
     first_child_pos: u64,
-    n_children: u32,
-    max_children: u32,
+    pub n_children: u32,
+    pub max_children: u32,
 }
 
 #[derive(Clone)]
