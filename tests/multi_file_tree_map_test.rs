@@ -188,6 +188,42 @@ fn can_get_children() {
 }
 
 #[test]
+fn can_get_none_for_get_child_with_no_file() {
+    let splitter: fn(u16) -> u8 = |k| {(k >> 8) as u8};
+    let key1 = ((10 << 8) + 1) as u16;
+    let key2 = ((15 << 8) + 1) as u16;
+
+    let mut res = MultiFileTreeMap::new(MAP_PATH, 2, TruncateCreate, splitter);
+    assert!(res.is_ok(), "tree not created");
+
+    if let Ok(ref mut t) = res {
+        let child1 = t.add_child(t.get_top(), key1, 100, 1000, 2).unwrap();
+        assert_eq!(child1, 266, "first child shall get node id 266");
+        // 266 is local node id 1 shifted left by 8 plus selector 10 from key1
+
+        let child2_nd = t.get_child(t.get_top(), key2);
+        assert!(child2_nd.is_ok(), "should not return error");
+
+        if let Some(_nd) = child2_nd.unwrap() {
+            assert!(false, "should not return data");
+        }
+
+        let child2 = t.add_child(t.get_top(), key2, 200, 2000, 2).unwrap();
+        assert_eq!(child2, 271, "second child shall get node id 271");
+        // 271 is local node id 1 shifted left by 8 plus selector 15 from key2
+
+        let child2_nd = t.get_child(t.get_top(), key2);
+        assert!(res.is_ok(), "should not return error");
+
+        if let None = child2_nd.unwrap() {
+            assert!(false, "should not return none");
+        }
+    }
+
+    remove_files(res.unwrap());
+}
+
+#[test]
 fn can_get_node() {
     let splitter: fn(u16) -> u8 = |k| {(k >> 8) as u8};
     let key1 = ((10 << 8) + 1) as u16;

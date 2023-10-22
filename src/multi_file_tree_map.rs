@@ -109,12 +109,21 @@ impl<F> MultiFileTreeMap<F>
 
         manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
             t.get_child(node_from_selector_node(node), key)
-        }).map(|n| {
-            n.map(|mut nd| {
+        }).map_or_else(|e| match e {
+            NonExistingFiles => Ok(None),
+            _ => Err(e),
+        }, |n| {
+            Ok(n.map(|mut nd| {
                 nd.node_id = selector_node_from_node(nd.node_id, tree_selector);
                 nd
-            })
+            }))
         })
+
+        //     .map_or_else(|e| match e {
+        //     NonExistingFiles => Ok(None),
+        //     _ => Err(e),
+        // }, |v| Ok(v))
+
     }
 
     pub fn get_parent(&mut self, node: NodeId) -> Result<Option<NodeData>, TreeFileError> {
