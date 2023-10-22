@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 pub mod multi_file_tree_map;
 pub mod tree_map;
 mod utils;
@@ -30,5 +32,32 @@ impl Iterator for Iter {
     type Item = (u16, NodeId);
     fn next(&mut self) -> Option<Self::Item> {
         self.key_vals.pop()
+    }
+}
+
+#[derive(Debug)]
+pub enum TreeFileError {
+    NonExistingFiles,
+    NonExistingNode,
+    LogicError {msg: String},
+    FileIOError {msg: String},
+}
+
+impl Display for TreeFileError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TreeFileError::NonExistingFiles => {
+                write!(f, "tried to open a non existing tree file in open mode MustExist")
+            },
+            TreeFileError::NonExistingNode => {
+                write!(f, "Node does not exists in tree")
+            },
+            TreeFileError::LogicError {msg} => {
+                write!(f, "{}", msg)
+            },
+            TreeFileError::FileIOError {msg} => {
+                write!(f, "{}", msg)
+            },
+        }
     }
 }

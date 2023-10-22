@@ -6,7 +6,6 @@ use rust_tree_map::OpenMode::{TruncateCreate, OpenCreate, MustExist};
 
 const MAP_PATH: &str = "tests/test_data";
 
-#[allow(dead_code)]
 fn remove_files<F>(tree_map: MultiFileTreeMap<F>)
     where F: Fn(u16) -> u8
 {

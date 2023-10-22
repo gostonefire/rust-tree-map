@@ -3,7 +3,8 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
-use crate::{Iter, NodeData, NodeId, OpenMode};
+use crate::{Iter, NodeData, NodeId, OpenMode, TreeFileError};
+use crate::TreeFileError::{FileIOError, LogicError, NonExistingFiles};
 use crate::OpenMode::{TruncateCreate, OpenCreate, MustExist};
 use crate::tree_map::TreeMap;
 use crate::utils::{add_and_subtract, create_file, open_file};
@@ -30,7 +31,7 @@ pub struct MultiFileTreeMap<F>
 impl<F> MultiFileTreeMap<F>
     where F: Fn(u16) -> u8
 {
-    pub fn new(path: &str, max_top_children: u32, open_mode: OpenMode, splitter: F) -> Result<MultiFileTreeMap<F>, String> {
+    pub fn new(path: &str, max_top_children: u32, open_mode: OpenMode, splitter: F) -> Result<MultiFileTreeMap<F>, TreeFileError> {
         let file_path = format!("{}/multifile_treemap.bin", path);
 
         let exists = Path::new(&file_path).is_file();
@@ -40,7 +41,7 @@ impl<F> MultiFileTreeMap<F>
             OpenCreate if exists => open_file(&file_path)?,
             OpenCreate => create_file(&file_path)?,
             MustExist if exists => open_file(&file_path)?,
-            MustExist => { return Err(String::from("Master file missing")); },
+            MustExist => { return Err(NonExistingFiles); },
         };
 
         let tree = MultiFileTreeMap {
@@ -76,7 +77,7 @@ impl<F> MultiFileTreeMap<F>
         len + 1
     }
 
-    pub fn get_node(&mut self, node: NodeId) -> Result<NodeData, String> {
+    pub fn get_node(&mut self, node: NodeId) -> Result<NodeData, TreeFileError> {
         let mut lock = self.guarded.lock().unwrap();
 
         if node == self.get_top() {
@@ -93,7 +94,7 @@ impl<F> MultiFileTreeMap<F>
         })
     }
 
-    pub fn add_child(&mut self, node: NodeId, key: u16, hits: u64, score: u64, max_children: u32) -> Result<NodeId, String> {
+    pub fn add_child(&mut self, node: NodeId, key: u16, hits: u64, score: u64, max_children: u32) -> Result<NodeId, TreeFileError> {
         let tree_selector = self.get_selector(node, Some(key))?;
         let mut lock = self.guarded.lock().unwrap();
 
@@ -102,7 +103,7 @@ impl<F> MultiFileTreeMap<F>
         }).map(|n| selector_node_from_node(n, tree_selector))
     }
 
-    pub fn get_child(&mut self, node: NodeId, key: u16) -> Result<Option<NodeData>, String> {
+    pub fn get_child(&mut self, node: NodeId, key: u16) -> Result<Option<NodeData>, TreeFileError> {
         let tree_selector = self.get_selector(node, Some(key))?;
         let mut lock = self.guarded.lock().unwrap();
 
@@ -116,7 +117,7 @@ impl<F> MultiFileTreeMap<F>
         })
     }
 
-    pub fn get_parent(&mut self, node: NodeId) -> Result<Option<NodeData>, String> {
+    pub fn get_parent(&mut self, node: NodeId) -> Result<Option<NodeData>, TreeFileError> {
         if node == self.get_top() {
             return Ok(None);
         }
@@ -138,7 +139,7 @@ impl<F> MultiFileTreeMap<F>
         })
     }
 
-    pub fn update_node_add(&mut self, node: NodeId, hits: i64, score: i64) -> Result<(), String> {
+    pub fn update_node_add(&mut self, node: NodeId, hits: i64, score: i64) -> Result<(), TreeFileError> {
         let mut lock = self.guarded.lock().unwrap();
 
         if node == self.get_top() {
@@ -181,7 +182,7 @@ impl<F> MultiFileTreeMap<F>
         }).expect("non existing tree files for the child iterator")
     }
 
-    fn get_selector(&self, node: NodeId, key: Option<u16>) -> Result<u8, String> {
+    fn get_selector(&self, node: NodeId, key: Option<u16>) -> Result<u8, TreeFileError> {
         match key {
             Some(k) if node == self.get_top() => {
                 Ok((self.splitter)(k))
@@ -193,7 +194,7 @@ impl<F> MultiFileTreeMap<F>
                 Ok(selector_from_selector_node(node))
             },
             None => {
-                Err(String::from("Top node given, but no key to select files from"))
+                Err(LogicError {msg: String::from("Top node given, but no key to select files from")})
             }
         }
     }
@@ -212,8 +213,8 @@ impl<F> MultiFileTreeMap<F>
     }
 }
 
-fn manage_trees_and_execute<F, T>(lock: &mut MutexGuard<MasterData>, tree_selector: u8, open_mode: OpenMode, func: F) -> Result<T, String>
-    where F: Fn(&mut TreeMap) -> Result<T, String>
+fn manage_trees_and_execute<F, T>(lock: &mut MutexGuard<MasterData>, tree_selector: u8, open_mode: OpenMode, func: F) -> Result<T, TreeFileError>
+    where F: Fn(&mut TreeMap) -> Result<T, TreeFileError>
 {
     loop {
         match lock.trees.get_mut(&tree_selector) {
@@ -227,10 +228,10 @@ fn manage_trees_and_execute<F, T>(lock: &mut MutexGuard<MasterData>, tree_select
     }
 }
 
-fn add_tree(lock: &mut MutexGuard<MasterData>, tree_selector: u8, open_mode: OpenMode) -> Result<(), String> {
+fn add_tree(lock: &mut MutexGuard<MasterData>, tree_selector: u8, open_mode: OpenMode) -> Result<(), TreeFileError> {
 
     if lock.trees.len() >= lock.max_top_children as usize {
-        return Err(String::from("Error, trying to add more children than allowed for parent"));
+        return Err(LogicError {msg: String::from("Error, trying to add more children than allowed for parent") });
     }
 
     let tree = TreeMap::new(&lock.path, lock.max_top_children, open_mode, Some(tree_selector))?;
@@ -239,16 +240,16 @@ fn add_tree(lock: &mut MutexGuard<MasterData>, tree_selector: u8, open_mode: Ope
     save_master_data(lock)
 }
 
-fn load_master_data(lock: &mut MutexGuard<MasterData>, open_mode: OpenMode) -> Result<(), String> {
+fn load_master_data(lock: &mut MutexGuard<MasterData>, open_mode: OpenMode) -> Result<(), TreeFileError> {
     lock.master_file.seek(SeekFrom::Start(0)).unwrap();
     let mut buf: Vec<u8> = Vec::new();
-    if let Err(e) = lock.master_file.read_to_end(&mut buf) {
-        return Err(String::from(format!("Error while reading from node file: {}", e)));
-    }
+    lock.master_file.read_to_end(&mut buf).map_err(|e| FileIOError {
+        msg: String::from(format!("Error while reading from master file: {}", e))
+    })?;
 
     match open_mode {
         MustExist if buf.len() < MASTER_MIN_LENGTH => {
-            return Err(String::from("Error, no master data in master file"));
+            return Err(LogicError {msg: String::from("Error, no master data in master file")});
         },
         _ => {
             if buf.len() >= MASTER_MIN_LENGTH {
@@ -258,7 +259,7 @@ fn load_master_data(lock: &mut MutexGuard<MasterData>, open_mode: OpenMode) -> R
                 lock.score = u64::from_le_bytes(buf[16..24].try_into().unwrap());
 
                 if buf.len() < (n_children as usize + MASTER_MIN_LENGTH) {
-                    return Err(String::from("Error, to few trees in master file"));
+                    return Err(LogicError {msg: String::from("Error, to few trees in master file")});
                 }
 
                 for offset in 0..n_children as usize {
@@ -273,7 +274,7 @@ fn load_master_data(lock: &mut MutexGuard<MasterData>, open_mode: OpenMode) -> R
     Ok(())
 }
 
-fn save_master_data(lock: &mut MutexGuard<MasterData>) -> Result<(), String> {
+fn save_master_data(lock: &mut MutexGuard<MasterData>) -> Result<(), TreeFileError> {
     let mut buf: Vec<u8> = Vec::new();
     lock.max_top_children.to_le_bytes().iter().for_each(|v| buf.push(*v));
     (lock.trees.len() as u32).to_le_bytes().iter().for_each(|v| buf.push(*v));
@@ -283,9 +284,9 @@ fn save_master_data(lock: &mut MutexGuard<MasterData>) -> Result<(), String> {
     lock.trees.keys().for_each(|v| buf.push(*v));
 
     lock.master_file.seek(SeekFrom::Start(0)).unwrap();
-    if let Err(e) = lock.master_file.write_all(&buf) {
-        return Err(String::from(format!("Error while writing to master file: {}", e)));
-    }
+    lock.master_file.write_all(&buf).map_err(|e| FileIOError {
+        msg: String::from(format!("Error while writing to master file: {}", e))
+    })?;
 
     Ok(())
 }
