@@ -86,7 +86,7 @@ impl<F> MultiFileTreeMap<F>
 
         let tree_selector = self.get_selector(node, None)?;
 
-        manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
+        get_tree_and_execute(&mut lock, tree_selector, |t| {
             t.get_node(node_from_selector_node(node))
         }).map(|mut n| {
             n.node_id = selector_node_from_node(n.node_id, tree_selector);
@@ -98,7 +98,7 @@ impl<F> MultiFileTreeMap<F>
         let tree_selector = self.get_selector(node, Some(key))?;
         let mut lock = self.guarded.lock().unwrap();
 
-        manage_trees_and_execute(&mut lock, tree_selector, self.open_mode.clone(), |t| {
+        create_tree_and_execute(&mut lock, tree_selector, Some(max_children), self.open_mode.clone(), |t| {
             t.add_child(node_from_selector_node(node), key, hits, score, max_children)
         }).map(|n| selector_node_from_node(n, tree_selector))
     }
@@ -107,7 +107,7 @@ impl<F> MultiFileTreeMap<F>
         let tree_selector = self.get_selector(node, Some(key))?;
         let mut lock = self.guarded.lock().unwrap();
 
-        manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
+        get_tree_and_execute(&mut lock, tree_selector, |t| {
             t.get_child(node_from_selector_node(node), key)
         }).map_or_else(|e| match e {
             NonExistingFiles => Ok(None),
@@ -118,12 +118,6 @@ impl<F> MultiFileTreeMap<F>
                 nd
             }))
         })
-
-        //     .map_or_else(|e| match e {
-        //     NonExistingFiles => Ok(None),
-        //     _ => Err(e),
-        // }, |v| Ok(v))
-
     }
 
     pub fn get_parent(&mut self, node: NodeId) -> Result<Option<NodeData>, TreeFileError> {
@@ -134,7 +128,7 @@ impl<F> MultiFileTreeMap<F>
         let tree_selector = self.get_selector(node, None)?;
         let mut lock = self.guarded.lock().unwrap();
 
-        manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
+        get_tree_and_execute(&mut lock, tree_selector, |t| {
             t.get_parent(node_from_selector_node(node))
         }).map(|n| {
             n.map(|mut nd| {
@@ -159,7 +153,7 @@ impl<F> MultiFileTreeMap<F>
 
         let tree_selector = self.get_selector(node, None)?;
 
-        manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
+        get_tree_and_execute(&mut lock, tree_selector, |t| {
             t.update_node_add(node_from_selector_node(node), hits, score)
         })
     }
@@ -186,7 +180,7 @@ impl<F> MultiFileTreeMap<F>
 
         let tree_selector = self.get_selector(node, None).unwrap();
 
-        manage_trees_and_execute(&mut lock, tree_selector, MustExist, |t| {
+        get_tree_and_execute(&mut lock, tree_selector, |t| {
             Ok(t.get_child_iter(node_from_selector_node(node)))
         }).expect("non existing tree files for the child iterator")
     }
@@ -222,7 +216,7 @@ impl<F> MultiFileTreeMap<F>
     }
 }
 
-fn manage_trees_and_execute<F, T>(lock: &mut MutexGuard<MasterData>, tree_selector: u8, open_mode: OpenMode, func: F) -> Result<T, TreeFileError>
+fn create_tree_and_execute<F, T>(lock: &mut MutexGuard<MasterData>, tree_selector: u8, max_top_children: Option<u32>, open_mode: OpenMode, func: F) -> Result<T, TreeFileError>
     where F: Fn(&mut TreeMap) -> Result<T, TreeFileError>
 {
     loop {
@@ -231,19 +225,48 @@ fn manage_trees_and_execute<F, T>(lock: &mut MutexGuard<MasterData>, tree_select
                 return (func)(tree);
             },
             None => {
-                add_tree(lock, tree_selector, open_mode.clone())?;
+                add_tree(lock, tree_selector, max_top_children, open_mode.clone())?;
             }
         }
     }
 }
 
-fn add_tree(lock: &mut MutexGuard<MasterData>, tree_selector: u8, open_mode: OpenMode) -> Result<(), TreeFileError> {
+fn get_tree_and_execute<F, T>(lock: &mut MutexGuard<MasterData>, tree_selector: u8, func: F) -> Result<T, TreeFileError>
+    where F: Fn(&mut TreeMap) -> Result<T, TreeFileError>
+{
+    loop {
+        match lock.trees.get_mut(&tree_selector) {
+            Some(tree) => {
+                return (func)(tree);
+            },
+            None => {
+                add_tree(lock, tree_selector, None, MustExist)?;
+            }
+        }
+    }
+}
+
+fn add_tree(lock: &mut MutexGuard<MasterData>, tree_selector: u8, max_top_children: Option<u32> , open_mode: OpenMode) -> Result<(), TreeFileError> {
 
     if lock.trees.len() >= lock.max_top_children as usize {
         return Err(LogicError {msg: String::from("Error, trying to add more children than allowed for parent") });
     }
 
-    let tree = TreeMap::new(&lock.path, lock.max_top_children, open_mode, Some(tree_selector))?;
+    let tree = match open_mode {
+        MustExist => {
+            TreeMap::new(&lock.path, 0, open_mode, Some(tree_selector))?
+        },
+        OpenCreate | TruncateCreate => {
+            if let Some(max_top_children) = max_top_children {
+                TreeMap::new(&lock.path, max_top_children, open_mode, Some(tree_selector))?
+            } else {
+                return Err(LogicError {
+                    msg: String::from("Error, trying to possibly create new tree map without specifying max top children")
+                });
+            }
+        }
+    };
+
     let _ = &lock.trees.insert(tree_selector, tree);
 
     save_master_data(lock)
