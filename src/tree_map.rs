@@ -126,14 +126,6 @@ impl TreeMap {
         } else {
             Ok(None)
         }
-        // match res.get(&key) {
-        //     Some(&node_pos) => {
-        //         Ok(Some(get_node(&mut lock, node_pos)?))
-        //     },
-        //     None => {
-        //         Ok(None)
-        //     }
-        // }
     }
 
     pub fn get_parent(&self, node: NodeId) -> Result<Option<NodeData>, TreeFileError> {
@@ -223,11 +215,6 @@ fn update_children_child_mappings(lock: &mut MutexGuard<FileData>, parent_pos: u
     } else {
         res.child_maps.push(ChildMap{ node_pos: child_pos, key })
     }
-    // if let Some(_) = res.insert(key, child_pos) {
-    //     return Err(LogicError {
-    //         msg: String::from("key already present, would turn existing child node to a ghost node")
-    //     });
-    // }
 
     let new_children_len = res.child_maps.len() as u32;
     if new_children_len > children_meta.max_children {
@@ -343,7 +330,6 @@ fn get_children_maps(lock: &mut MutexGuard<FileData>, key: u16, children_meta: &
     })?;
 
     let mut child_no: usize = 0;
-    //let mut res: HashMap<u16, u64> = HashMap::new();
     let mut children_maps = ChildrenMaps { key_hit: None, child_maps: Vec::new() };
     while child_no < children_meta.n_children as usize {
         let offset = MAP_LENGTH * child_no;
@@ -353,7 +339,6 @@ fn get_children_maps(lock: &mut MutexGuard<FileData>, key: u16, children_meta: &
             children_maps.key_hit = Some(ChildMap{ node_pos, key });
         }
         children_maps.child_maps.push(ChildMap{ node_pos, key: child_key });
-        //res.insert(key, node_pos);
         child_no += 1;
     }
 
