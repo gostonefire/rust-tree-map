@@ -190,7 +190,7 @@ fn count_nodes(lock: &mut MutexGuard<FileData>) -> Result<(), TreeFileError> {
 fn new_children_child_mappings(lock: &mut MutexGuard<FileData>, parent_pos: u64, key: u16, child_pos: u64, children_meta: &mut ChildrenMeta) -> Result<(), TreeFileError> {
     if children_meta.max_children == 0 {
         return Err(LogicError {
-            msg: String::from("Error, trying to add more children than allowed for parent")
+            msg: String::from("trying to add more children than allowed for parent")
         });
     }
 
@@ -209,14 +209,14 @@ fn update_children_child_mappings(lock: &mut MutexGuard<FileData>, parent_pos: u
     let mut res = get_children_maps(lock, children_meta)?;
     if let Some(_) = res.insert(key, child_pos) {
         return Err(LogicError {
-            msg: String::from("Error, key already present, would turn existing child node to a ghost node")
+            msg: String::from("key already present, would turn existing child node to a ghost node")
         });
     }
 
     let new_children_len = res.len() as u32;
     if new_children_len > children_meta.max_children {
         return Err(LogicError {
-            msg: String::from("Error, trying to add more children than allowed for parent")
+            msg: String::from("trying to add more children than allowed for parent")
         });
     }
 
@@ -234,7 +234,7 @@ fn get_node(lock: &mut MutexGuard<FileData>, node_pos: u64) -> Result<NodeData, 
     let mut buf = [0u8;NODE_LENGTH];
     let _ = lock.node_file.seek(SeekFrom::Start(node_pos)).unwrap();
     lock.node_file.read_exact(&mut buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while reading from node file: {}", e))
+        msg: String::from(format!("while reading from node file: {}", e))
     })?;
 
     let parent_pos = u64::from_le_bytes(buf[0..8].try_into().unwrap());
@@ -270,7 +270,7 @@ fn add_node(lock: &mut MutexGuard<FileData>, parent_pos: u64, hits: u64, score: 
     };
     let buf = node_to_buf(parent_pos, &node_data);
     lock.node_file.write_all(&buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while writing to node file: {}", e))
+        msg: String::from(format!("while writing to node file: {}", e))
     })?;
     lock.n_nodes += 1;
 
@@ -285,7 +285,7 @@ fn update_node(lock: &mut MutexGuard<FileData>, node_data: &NodeData) -> Result<
 
     let buf = node_to_buf(parent_pos, node_data);
     lock.node_file.write_all(&buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while writing to node file: {}", e))
+        msg: String::from(format!("while writing to node file: {}", e))
     })?;
 
     Ok(())
@@ -299,7 +299,7 @@ fn get_node_child_meta(lock: &mut MutexGuard<FileData>, node_pos: u64) -> Result
     lock.node_file.seek(SeekFrom::Start(node_pos + NODE_CHILD_META_OFFSET)).unwrap();
     let mut buf = [0u8;NODE_CHILD_META_LENGTH];
     lock.node_file.read_exact(&mut buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while reading from node file: {}", e))
+        msg: String::from(format!("while reading from node file: {}", e))
     })?;
 
     Ok(ChildrenMeta{
@@ -313,7 +313,7 @@ fn update_node_child_meta(lock: &mut MutexGuard<FileData>, node_pos: u64, childr
     lock.node_file.seek(SeekFrom::Start(node_pos + NODE_CHILD_META_OFFSET)).unwrap();
     let buf = node_children_to_buf(children_meta.first_child_pos, children_meta.n_children, children_meta.max_children);
     lock.node_file.write_all(&buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while writing to node file: {}", e))
+        msg: String::from(format!("while writing to node file: {}", e))
     })?;
 
     Ok(())
@@ -323,7 +323,7 @@ fn get_children_maps(lock: &mut MutexGuard<FileData>, children_meta: &ChildrenMe
     lock.map_file.seek(SeekFrom::Start(children_meta.first_child_pos)).unwrap();
     let mut buf = vec![0u8;MAP_LENGTH * children_meta.max_children as usize];
     lock.map_file.read_exact(&mut buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while reading from map file: {}", e))
+        msg: String::from(format!("while reading from map file: {}", e))
     })?;
 
     let mut child_no: usize = 0;
@@ -343,7 +343,7 @@ fn get_children_vec(lock: &mut MutexGuard<FileData>, children_meta: &ChildrenMet
     lock.map_file.seek(SeekFrom::Start(children_meta.first_child_pos)).unwrap();
     let mut buf = vec![0u8;MAP_LENGTH * children_meta.max_children as usize];
     lock.map_file.read_exact(&mut buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while reading from map file: {}", e))
+        msg: String::from(format!("while reading from map file: {}", e))
     })?;
 
     let mut child_no: usize = 0;
@@ -363,7 +363,7 @@ fn update_children_maps(lock: &mut MutexGuard<FileData>, children_maps: HashMap<
     lock.map_file.seek(SeekFrom::Start(children_meta.first_child_pos)).unwrap();
     let buf = children_to_buf(children_maps, children_meta.max_children);
     lock.map_file.write_all(&buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while writing to map file: {}", e))
+        msg: String::from(format!("while writing to map file: {}", e))
     })?;
 
     Ok(())
@@ -373,7 +373,7 @@ fn add_child_map(lock: &mut MutexGuard<FileData>, child_map: &ChildMap, max_chil
     let buf = children_to_buf(HashMap::from([(child_map.key, child_map.node_pos)]),max_children);
     let children_pos = lock.map_file.seek(SeekFrom::End(0)).unwrap();
     lock.map_file.write_all(&buf).map_err(|e| FileIOError {
-         msg: String::from(format!("Error while writing to map file: {}", e))
+         msg: String::from(format!("while writing to map file: {}", e))
     })?;
 
     Ok(children_pos)

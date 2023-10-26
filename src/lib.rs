@@ -47,16 +47,16 @@ impl Display for TreeFileError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             TreeFileError::NonExistingFiles => {
-                write!(f, "tried to open a non existing tree file in open mode MustExist")
+                write!(f, "NonExistingFiles: tried to open a non existing tree file in open mode MustExist")
             },
             TreeFileError::NonExistingNode => {
-                write!(f, "Node does not exists in tree")
+                write!(f, "NonExistingNode: node does not exists in tree")
             },
             TreeFileError::LogicError {msg} => {
-                write!(f, "{}", msg)
+                write!(f, "LogicError: {}", msg)
             },
             TreeFileError::FileIOError {msg} => {
-                write!(f, "{}", msg)
+                write!(f, "FileIOError: {}", msg)
             },
         }
     }

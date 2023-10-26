@@ -197,7 +197,7 @@ impl<F> MultiFileTreeMap<F>
                 Ok(selector_from_selector_node(node))
             },
             None => {
-                Err(LogicError {msg: String::from("Top node given, but no key to select files from")})
+                Err(LogicError {msg: String::from("top node given, but no key to select files from")})
             }
         }
     }
@@ -249,7 +249,7 @@ fn get_tree_and_execute<F, T>(lock: &mut MutexGuard<MasterData>, tree_selector: 
 fn add_tree(lock: &mut MutexGuard<MasterData>, tree_selector: u8, max_top_children: Option<u32> , open_mode: OpenMode) -> Result<(), TreeFileError> {
 
     if lock.trees.len() >= lock.max_top_children as usize {
-        return Err(LogicError {msg: String::from("Error, trying to add more children than allowed for parent") });
+        return Err(LogicError {msg: String::from("trying to add more children than allowed for parent") });
     }
 
     let tree = match open_mode {
@@ -261,7 +261,7 @@ fn add_tree(lock: &mut MutexGuard<MasterData>, tree_selector: u8, max_top_childr
                 TreeMap::new(&lock.path, max_top_children, open_mode, Some(tree_selector))?
             } else {
                 return Err(LogicError {
-                    msg: String::from("Error, trying to possibly create new tree map without specifying max top children")
+                    msg: String::from("trying to possibly create new tree map without specifying max top children")
                 });
             }
         }
@@ -276,12 +276,12 @@ fn load_master_data(lock: &mut MutexGuard<MasterData>, open_mode: OpenMode) -> R
     lock.master_file.seek(SeekFrom::Start(0)).unwrap();
     let mut buf: Vec<u8> = Vec::new();
     lock.master_file.read_to_end(&mut buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while reading from master file: {}", e))
+        msg: String::from(format!("while reading from master file: {}", e))
     })?;
 
     match open_mode {
         MustExist if buf.len() < MASTER_MIN_LENGTH => {
-            return Err(LogicError {msg: String::from("Error, no master data in master file")});
+            return Err(LogicError {msg: String::from("no master data in master file")});
         },
         _ => {
             if buf.len() >= MASTER_MIN_LENGTH {
@@ -291,7 +291,7 @@ fn load_master_data(lock: &mut MutexGuard<MasterData>, open_mode: OpenMode) -> R
                 lock.score = u64::from_le_bytes(buf[16..24].try_into().unwrap());
 
                 if buf.len() < (n_children as usize + MASTER_MIN_LENGTH) {
-                    return Err(LogicError {msg: String::from("Error, to few trees in master file")});
+                    return Err(LogicError {msg: String::from("to few trees in master file")});
                 }
 
                 for offset in 0..n_children as usize {
@@ -317,7 +317,7 @@ fn save_master_data(lock: &mut MutexGuard<MasterData>) -> Result<(), TreeFileErr
 
     lock.master_file.seek(SeekFrom::Start(0)).unwrap();
     lock.master_file.write_all(&buf).map_err(|e| FileIOError {
-        msg: String::from(format!("Error while writing to master file: {}", e))
+        msg: String::from(format!("while writing to master file: {}", e))
     })?;
 
     Ok(())
