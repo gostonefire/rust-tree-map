@@ -114,17 +114,28 @@ fn can_add_children() {
     assert!(res.is_ok(), "tree not created");
 
     if let Ok(ref mut t) = res {
+        assert_eq!(t.len(), 1, "empty tree shall still have the top node created");
+
+        // First two child nodes shall go ok
         let child1 = t.add_child(t.get_top(), key1, 100, 1000, 2).unwrap();
         assert_eq!(child1, 266, "first child shall get node id 266");
         // 266 is local node id 1 shifted left by 8 plus selector 10 from key1
+
+        assert_eq!(t.len(), 2, "should be 2, one top and one in a child tree");
 
         let child2 = t.add_child(t.get_top(), key2, 200, 2000, 2).unwrap();
         assert_eq!(child2, 271, "second child shall get node id 271");
         // 271 is local node id 1 shifted left by 8 plus selector 15 from key2
 
+        assert_eq!(t.len(), 3, "should be 3, one top and 2 in child trees");
+
+        // Third child under top node should fail
         let child3 = t.add_child(t.get_top(), key3, 300, 3000, 2);
         assert!(child3.is_err(), "third child shall fail");
 
+        assert_eq!(t.len(), 3, "should be 3, one top and 2 in child trees");
+
+        // First two sub child nodes shall go ok
         let child21 = t.add_child(child2, key4, 200, 2000, 2).unwrap();
         assert_eq!(child21, 527, "first sub child shall get node id 527");
         // 527 is local node id 2 shifted left by 8 plus selector 15 (which comes from selector part from child2)
@@ -133,8 +144,24 @@ fn can_add_children() {
         assert_eq!(child22, 783, "second sub child shall get node id 783");
         // 783 is local node id 3 shifted left by 8 plus selector 15 (which comes from selector part from child2)
 
+        assert_eq!(t.len(), 5, "should be 5, one top and 4 in child trees");
+
+        // Thirds sub child node should fail
         let child23 = t.add_child(child2, key6, 200, 2000, 2);
         assert!(child23.is_err(), "third sub child shall fail");
+
+        assert_eq!(t.len(), 5, "should be 5, one top and 4 in child trees");
+
+        // Re-adding a child node with the same key (even though with different data) shall fail
+        let child2_re_add = t.add_child(t.get_top(), key2, 350, 3550, 2);
+        assert!(child2_re_add.is_err(), "re-added child shall fail");
+
+        assert_eq!(t.len(), 5, "should be 5, one top and 4 in child trees");
+
+        let child22_re_add = t.add_child(child2, key5, 200, 2000, 2);
+        assert!(child22_re_add.is_err(), "re-added sub child shall fail");
+
+        assert_eq!(t.len(), 5, "should be 5, one top and 4 in child trees");
     }
 
     remove_files(res.unwrap());

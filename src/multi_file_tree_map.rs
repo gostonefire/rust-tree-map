@@ -73,7 +73,7 @@ impl<F> MultiFileTreeMap<F>
 
     pub fn len(&self) -> usize {
         let lock = self.guarded.lock().unwrap();
-        let len = lock.trees.values().map(|t| t.len()).sum::<usize>();
+        let len = lock.trees.values().map(|t| t.len() - 1).sum::<usize>();
         len + 1
     }
 

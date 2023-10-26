@@ -90,7 +90,8 @@ impl TreeMap {
         check_presence(&mut lock, node)?;
 
         let parent_pos = node_id_to_pos(node);
-        let child_pos = add_node(&mut lock, parent_pos, hits, score, max_children)?;
+        let child_pos = expected_node_pos(&mut lock);
+
         let mut children_meta = get_node_child_meta(&mut lock, parent_pos)?;
 
         if children_meta.n_children == 0 {
@@ -98,6 +99,8 @@ impl TreeMap {
         } else {
             update_children_child_mappings(&mut lock, parent_pos, key, child_pos, &mut children_meta)?;
         }
+
+        add_node(&mut lock, parent_pos, hits, score, max_children)?;
 
         Ok(pos_to_node_id(child_pos))
     }
@@ -185,6 +188,12 @@ fn count_nodes(lock: &mut MutexGuard<FileData>) -> Result<(), TreeFileError> {
 }
 
 fn new_children_child_mappings(lock: &mut MutexGuard<FileData>, parent_pos: u64, key: u16, child_pos: u64, children_meta: &mut ChildrenMeta) -> Result<(), TreeFileError> {
+    if children_meta.max_children == 0 {
+        return Err(LogicError {
+            msg: String::from("Error, trying to add more children than allowed for parent")
+        });
+    }
+
     let new_child_map = ChildMap{
         node_pos: child_pos,
         key,
@@ -198,7 +207,12 @@ fn new_children_child_mappings(lock: &mut MutexGuard<FileData>, parent_pos: u64,
 
 fn update_children_child_mappings(lock: &mut MutexGuard<FileData>, parent_pos: u64, key: u16, child_pos: u64, children_meta: &mut ChildrenMeta) -> Result<(), TreeFileError> {
     let mut res = get_children_maps(lock, children_meta)?;
-    res.insert(key, child_pos);
+    if let Some(_) = res.insert(key, child_pos) {
+        return Err(LogicError {
+            msg: String::from("Error, key already present, would turn existing child node to a ghost node")
+        });
+    }
+
     let new_children_len = res.len() as u32;
     if new_children_len > children_meta.max_children {
         return Err(LogicError {
@@ -275,6 +289,10 @@ fn update_node(lock: &mut MutexGuard<FileData>, node_data: &NodeData) -> Result<
     })?;
 
     Ok(())
+}
+
+fn expected_node_pos(lock: &mut MutexGuard<FileData>) -> u64 {
+    lock.node_file.seek(SeekFrom::End(0)).unwrap()
 }
 
 fn get_node_child_meta(lock: &mut MutexGuard<FileData>, node_pos: u64) -> Result<ChildrenMeta, TreeFileError> {
