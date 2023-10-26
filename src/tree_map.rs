@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -23,6 +22,11 @@ struct ChildrenMeta {
 struct ChildMap {
     node_pos: u64,
     key: u16,
+}
+
+struct ChildrenMaps {
+    key_hit: Option<ChildMap>,
+    child_maps: Vec<ChildMap>,
 }
 
 struct FileData {
@@ -115,16 +119,21 @@ impl TreeMap {
             return Ok(None);
         }
 
-        let res = get_children_maps(&mut lock, &children_meta)?;
+        let res = get_children_maps(&mut lock, key, &children_meta)?;
 
-        match res.get(&key) {
-            Some(&node_pos) => {
-                Ok(Some(get_node(&mut lock, node_pos)?))
-            },
-            None => {
-                Ok(None)
-            }
+        if let Some(c) = res.key_hit {
+            Ok(Some(get_node(&mut lock, c.node_pos)?))
+        } else {
+            Ok(None)
         }
+        // match res.get(&key) {
+        //     Some(&node_pos) => {
+        //         Ok(Some(get_node(&mut lock, node_pos)?))
+        //     },
+        //     None => {
+        //         Ok(None)
+        //     }
+        // }
     }
 
     pub fn get_parent(&self, node: NodeId) -> Result<Option<NodeData>, TreeFileError> {
@@ -199,28 +208,35 @@ fn new_children_child_mappings(lock: &mut MutexGuard<FileData>, parent_pos: u64,
         key,
     };
     children_meta.n_children = 1;
-    children_meta.first_child_pos = add_child_map(lock, &new_child_map, children_meta.max_children)?;
+    children_meta.first_child_pos = add_child_map(lock, new_child_map, children_meta.max_children)?;
     update_node_child_meta(lock, parent_pos, &children_meta)?;
 
     Ok(())
 }
 
 fn update_children_child_mappings(lock: &mut MutexGuard<FileData>, parent_pos: u64, key: u16, child_pos: u64, children_meta: &mut ChildrenMeta) -> Result<(), TreeFileError> {
-    let mut res = get_children_maps(lock, children_meta)?;
-    if let Some(_) = res.insert(key, child_pos) {
+    let mut res = get_children_maps(lock, key, children_meta)?;
+    if let Some(_) = res.key_hit {
         return Err(LogicError {
             msg: String::from("key already present, would turn existing child node to a ghost node")
         });
+    } else {
+        res.child_maps.push(ChildMap{ node_pos: child_pos, key })
     }
+    // if let Some(_) = res.insert(key, child_pos) {
+    //     return Err(LogicError {
+    //         msg: String::from("key already present, would turn existing child node to a ghost node")
+    //     });
+    // }
 
-    let new_children_len = res.len() as u32;
+    let new_children_len = res.child_maps.len() as u32;
     if new_children_len > children_meta.max_children {
         return Err(LogicError {
             msg: String::from("trying to add more children than allowed for parent")
         });
     }
 
-    update_children_maps(lock, res, children_meta)?;
+    update_children_maps(lock, res.child_maps, children_meta)?;
 
     if new_children_len != children_meta.n_children {
         children_meta.n_children = new_children_len;
@@ -319,7 +335,7 @@ fn update_node_child_meta(lock: &mut MutexGuard<FileData>, node_pos: u64, childr
     Ok(())
 }
 
-fn get_children_maps(lock: &mut MutexGuard<FileData>, children_meta: &ChildrenMeta) -> Result<HashMap<u16, u64>, TreeFileError> {
+fn get_children_maps(lock: &mut MutexGuard<FileData>, key: u16, children_meta: &ChildrenMeta) -> Result<ChildrenMaps, TreeFileError> {
     lock.map_file.seek(SeekFrom::Start(children_meta.first_child_pos)).unwrap();
     let mut buf = vec![0u8;MAP_LENGTH * children_meta.max_children as usize];
     lock.map_file.read_exact(&mut buf).map_err(|e| FileIOError {
@@ -327,16 +343,21 @@ fn get_children_maps(lock: &mut MutexGuard<FileData>, children_meta: &ChildrenMe
     })?;
 
     let mut child_no: usize = 0;
-    let mut res: HashMap<u16, u64> = HashMap::new();
+    //let mut res: HashMap<u16, u64> = HashMap::new();
+    let mut children_maps = ChildrenMaps { key_hit: None, child_maps: Vec::new() };
     while child_no < children_meta.n_children as usize {
         let offset = MAP_LENGTH * child_no;
         let node_pos = u64::from_le_bytes(buf[0+offset..8+offset].try_into().unwrap());
-        let key = u16::from_le_bytes(buf[8+offset..10+offset].try_into().unwrap());
-        res.insert(key, node_pos);
+        let child_key = u16::from_le_bytes(buf[8+offset..10+offset].try_into().unwrap());
+        if child_key == key {
+            children_maps.key_hit = Some(ChildMap{ node_pos, key });
+        }
+        children_maps.child_maps.push(ChildMap{ node_pos, key: child_key });
+        //res.insert(key, node_pos);
         child_no += 1;
     }
 
-    Ok(res)
+    Ok(children_maps)
 }
 
 fn get_children_vec(lock: &mut MutexGuard<FileData>, children_meta: &ChildrenMeta) -> Result<Vec<(u16, NodeId)>, TreeFileError> {
@@ -359,7 +380,7 @@ fn get_children_vec(lock: &mut MutexGuard<FileData>, children_meta: &ChildrenMet
     Ok(res)
 }
 
-fn update_children_maps(lock: &mut MutexGuard<FileData>, children_maps: HashMap<u16, u64>, children_meta: &ChildrenMeta) -> Result<(), TreeFileError> {
+fn update_children_maps(lock: &mut MutexGuard<FileData>, children_maps: Vec<ChildMap>, children_meta: &ChildrenMeta) -> Result<(), TreeFileError> {
     lock.map_file.seek(SeekFrom::Start(children_meta.first_child_pos)).unwrap();
     let buf = children_to_buf(children_maps, children_meta.max_children);
     lock.map_file.write_all(&buf).map_err(|e| FileIOError {
@@ -369,8 +390,8 @@ fn update_children_maps(lock: &mut MutexGuard<FileData>, children_maps: HashMap<
     Ok(())
 }
 
-fn add_child_map(lock: &mut MutexGuard<FileData>, child_map: &ChildMap, max_children: u32) -> Result<u64, TreeFileError> {
-    let buf = children_to_buf(HashMap::from([(child_map.key, child_map.node_pos)]),max_children);
+fn add_child_map(lock: &mut MutexGuard<FileData>, child_map: ChildMap, max_children: u32) -> Result<u64, TreeFileError> {
+    let buf = children_to_buf(Vec::from([child_map]),max_children);
     let children_pos = lock.map_file.seek(SeekFrom::End(0)).unwrap();
     lock.map_file.write_all(&buf).map_err(|e| FileIOError {
          msg: String::from(format!("while writing to map file: {}", e))
@@ -428,17 +449,17 @@ fn node_to_buf(parent_pos: u64, node_data: &NodeData) -> [u8;NODE_LENGTH] {
     buf
 }
 
-fn children_to_buf(children: HashMap<u16, u64>, max_children: u32) -> Vec<u8> {
+fn children_to_buf(children: Vec<ChildMap>, max_children: u32) -> Vec<u8> {
     // |node 8|key 2| * max_children
     let mut buf = vec![255u8;MAP_LENGTH * max_children as usize];
     let mut offset: usize = 0;
 
     for child in children {
-        child.1.to_le_bytes().iter().for_each(|v| {
+        child.node_pos.to_le_bytes().iter().for_each(|v| {
             buf[offset] = *v;
             offset += 1;
         });
-        child.0.to_le_bytes().iter().for_each(|v| {
+        child.key.to_le_bytes().iter().for_each(|v| {
             buf[offset] = *v;
             offset += 1;
         });
