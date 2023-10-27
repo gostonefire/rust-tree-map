@@ -174,15 +174,22 @@ impl<F> MultiFileTreeMap<F>
                     iter.key_vals.push((t.0, node));
                 })
             });
+        } else {
+            let tree_selector = self.get_selector(node, None).unwrap();
 
-            return iter;
+            get_tree_and_execute(&mut lock, tree_selector, |t| {
+                t.get_children(node_from_selector_node(node))
+            })
+                .expect("non existing tree files for the child iterator")
+                .iter().for_each(|&(k, n)| {
+                iter.key_vals.push((k, selector_node_from_node(n, tree_selector)))
+            });
         }
 
-        let tree_selector = self.get_selector(node, None).unwrap();
-
-        get_tree_and_execute(&mut lock, tree_selector, |t| {
-            Ok(t.get_child_iter(node_from_selector_node(node)))
-        }).expect("non existing tree files for the child iterator")
+        return iter;
+        // get_tree_and_execute(&mut lock, tree_selector, |t| {
+        //     Ok(t.get_child_iter(node_from_selector_node(node)))
+        // }).expect("non existing tree files for the child iterator")
     }
 
     fn get_selector(&self, node: NodeId, key: Option<u16>) -> Result<u8, TreeFileError> {

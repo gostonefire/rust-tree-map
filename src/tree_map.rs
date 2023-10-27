@@ -167,13 +167,24 @@ impl TreeMap {
 
         let node_pos = node_id_to_pos(node);
         let children_meta = get_node_child_meta(&mut lock, node_pos).unwrap();
-        //iter.key_vals = get_children_vec(&mut lock, &children_meta).unwrap();
         iter.key_vals = get_children_maps(&mut lock, None, &children_meta).unwrap()
             .child_maps.iter()
             .map(|cm | (cm.key, cm.node_id))
             .collect::<Vec<(u16, NodeId)>>();
 
         iter
+    }
+
+    pub(crate) fn get_children(&self, node: NodeId) -> Result<Vec<(u16, NodeId)>, TreeFileError> {
+        let mut lock = self.guarded.lock().unwrap();
+        check_presence(&mut lock, node)?;
+
+        let node_pos = node_id_to_pos(node);
+        let children_meta = get_node_child_meta(&mut lock, node_pos).unwrap();
+        Ok(get_children_maps(&mut lock, None, &children_meta)?
+            .child_maps.iter()
+            .map(|cm | (cm.key, cm.node_id))
+            .collect::<Vec<(u16, NodeId)>>())
     }
 }
 
