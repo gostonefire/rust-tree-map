@@ -187,9 +187,6 @@ impl<F> MultiFileTreeMap<F>
         }
 
         return iter;
-        // get_tree_and_execute(&mut lock, tree_selector, |t| {
-        //     Ok(t.get_child_iter(node_from_selector_node(node)))
-        // }).expect("non existing tree files for the child iterator")
     }
 
     fn get_selector(&self, node: NodeId, key: Option<u16>) -> Result<u8, TreeFileError> {
