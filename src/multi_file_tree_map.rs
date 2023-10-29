@@ -31,7 +31,7 @@ pub struct MultiFileTreeMap<F>
 impl<F> MultiFileTreeMap<F>
     where F: Fn(u16) -> u8
 {
-    pub fn new(path: &str, max_top_children: u32, open_mode: OpenMode, splitter: F) -> Result<MultiFileTreeMap<F>, TreeFileError> {
+    pub fn new(path: &str, max_file_splits: u32, open_mode: OpenMode, splitter: F) -> Result<MultiFileTreeMap<F>, TreeFileError> {
         let file_path = format!("{}/multifile_treemap.bin", path);
 
         let exists = Path::new(&file_path).is_file();
@@ -49,7 +49,7 @@ impl<F> MultiFileTreeMap<F>
                 path: String::from(path),
                 master_file,
                 trees: HashMap::new(),
-                max_top_children,
+                max_top_children: max_file_splits,
                 hits: 0,
                 score: 0,
             }),
@@ -81,7 +81,7 @@ impl<F> MultiFileTreeMap<F>
         let mut lock = self.guarded.lock().unwrap();
 
         if node == self.get_top() {
-            return Ok(self.get_top_node_data(&mut lock));
+            return Ok(self.get_top_node_data(&mut lock)?);
         }
 
         let tree_selector = self.get_selector(node, None)?;
@@ -128,18 +128,21 @@ impl<F> MultiFileTreeMap<F>
         let tree_selector = self.get_selector(node, None)?;
         let mut lock = self.guarded.lock().unwrap();
 
-        get_tree_and_execute(&mut lock, tree_selector, |t| {
+        let res = get_tree_and_execute(&mut lock, tree_selector, |t| {
             t.get_parent(node_from_selector_node(node))
-        }).map(|n| {
-            n.map(|mut nd| {
+        })?;
+
+        match res {
+            Some(mut nd) => {
                 if nd.node_id == self.get_top() {
-                    self.get_top_node_data(&mut lock)
+                    Ok(Some(self.get_top_node_data(&mut lock)?))
                 } else {
                     nd.node_id = selector_node_from_node(nd.node_id, tree_selector);
-                    nd
+                    Ok(Some(nd))
                 }
-            })
-        })
+            },
+            None => Ok(None)
+        }
     }
 
     pub fn update_node_add(&mut self, node: NodeId, hits: i64, score: i64) -> Result<(), TreeFileError> {
@@ -206,17 +209,26 @@ impl<F> MultiFileTreeMap<F>
         }
     }
 
-    fn get_top_node_data(&self, lock: &mut MutexGuard<MasterData>) -> NodeData {
-        NodeData {
+    fn get_top_node_data(&self, lock: &mut MutexGuard<MasterData>) -> Result<NodeData, TreeFileError> {
+        let mut n_children: u32 = 0;
+        let mut max_children: u32 = 0;
+
+        for t in lock.trees.values() {
+            let nd = t.get_node(t.get_top())?;
+            n_children += nd.n_children;
+            max_children += nd.max_children;
+        }
+
+        Ok(NodeData {
             node_id: self.get_top(),
             node_pos: 0,
             parent: None,
             hits: lock.hits,
             score: lock.score,
             first_child_pos: 0,
-            n_children: lock.trees.len() as u32,
-            max_children: lock.max_top_children,
-        }
+            n_children,
+            max_children,
+        })
     }
 }
 

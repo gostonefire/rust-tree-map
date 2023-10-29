@@ -40,7 +40,7 @@ fn create_a_new_tree() {
             assert_eq!(nd.hits, 0, "should have 0 hits");
             assert_eq!(nd.score, 0, "should have score 0");
             assert!(nd.parent.is_none(), "got parent for top node");
-            assert_eq!(nd.max_children, 2, "should have max children 2");
+            assert_eq!(nd.max_children, 0, "should have max children 0 (top node is virtual)");
             assert_eq!(nd.n_children, 0, "should have 0 children")
         }
     }
@@ -69,7 +69,7 @@ fn open_existing_tree() {
             assert_eq!(nd.hits, 0, "should have 0 hits");
             assert_eq!(nd.score, 0, "should have score 0");
             assert!(nd.parent.is_none(), "got parent for top node");
-            assert_eq!(nd.max_children, 2, "should have max children 2");
+            assert_eq!(nd.max_children, 0, "should have max children 0 (top node is virtual");
             assert_eq!(nd.n_children, 0, "should have 0 children")
         }
     }
@@ -88,7 +88,7 @@ fn open_existing_tree() {
             assert_eq!(nd.hits, 0, "should have 0 hits");
             assert_eq!(nd.score, 0, "should have score 0");
             assert!(nd.parent.is_none(), "got parent for top node");
-            assert_eq!(nd.max_children, 2, "should have max children 2");
+            assert_eq!(nd.max_children, 0, "should have max children 0 (top node is virtual)");
             assert_eq!(nd.n_children, 0, "should have 0 children")
         }
     }
